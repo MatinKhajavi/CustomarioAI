@@ -1,0 +1,204 @@
+.feedback-container {
+  position: relative;
+  min-height: 100vh;
+  background: #f7fafc;
+}
+
+.feedback-container.active {
+  padding: 30px 0 30px 0;
+}
+
+.feedback-content {
+  width: 100%;
+  height: 100%;
+}
+
+/* Thick blue borders */
+.feedback-border-top,
+.feedback-border-bottom,
+.feedback-border-left,
+.feedback-border-right {
+  position: fixed;
+  background: #3b82f6;
+  z-index: 9998;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+.feedback-border-top {
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-bottom: 2px solid #2563eb;
+}
+
+.feedback-border-bottom {
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 30px;
+  border-top: 2px solid #2563eb;
+}
+
+.feedback-border-left {
+  top: 30px;
+  bottom: 30px;
+  left: 0;
+  width: 4px;
+}
+
+.feedback-border-right {
+  top: 30px;
+  bottom: 30px;
+  right: 0;
+  width: 4px;
+}
+
+.border-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 1200px;
+  padding: 0 1.5rem;
+  gap: 1.5rem;
+}
+
+.recording-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.pulse-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+.pulse-dot.active {
+  background: #48bb78;
+  box-shadow: 0 0 8px rgba(72, 187, 120, 0.6);
+}
+
+.pulse-dot.paused {
+  background: #ed8936;
+  animation: none;
+  box-shadow: 0 0 8px rgba(237, 137, 54, 0.6);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.8;
+    transform: scale(1.2);
+  }
+}
+
+.recording-text {
+  font-weight: 600;
+  color: white;
+  font-size: 0.85rem;
+  letter-spacing: 0.5px;
+}
+
+.session-time {
+  font-family: "Courier New", monospace;
+  font-weight: 700;
+  color: white;
+  font-size: 0.9rem;
+  background: rgba(255, 255, 255, 0.2);
+  padding: 0.35rem 0.75rem;
+  border-radius: 4px;
+}
+
+.border-controls {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+}
+
+.border-button {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: white;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.border-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+}
+
+.border-button:active {
+  transform: translateY(0);
+}
+
+.border-button.pause {
+  background: #ed8936;
+}
+
+.border-button.pause:hover {
+  background: #dd6b20;
+}
+
+.border-button.resume {
+  background: #48bb78;
+}
+
+.border-button.resume:hover {
+  background: #38a169;
+}
+
+.border-button.end {
+  background: #e53e3e;
+}
+
+.border-button.end:hover {
+  background: #c53030;
+}
+
+@media (max-width: 768px) {
+  .feedback-container.active {
+    padding: 30px 0 30px 0;
+  }
+
+  .feedback-border-top {
+    height: 30px;
+  }
+
+  .feedback-border-bottom {
+    height: 30px;
+  }
+
+  .border-content {
+    flex-direction: row;
+    gap: 1rem;
+    padding: 0 1rem;
+  }
+
+  .recording-text {
+    font-size: 0.8rem;
+  }
+
+  .session-time {
+    font-size: 0.85rem;
+    padding: 0.3rem 0.6rem;
+  }
+}
