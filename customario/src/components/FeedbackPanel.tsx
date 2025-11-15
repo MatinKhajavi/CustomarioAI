@@ -107,7 +107,7 @@ function FeedbackPanel({
     }, 2000);
   }, []);
 
-  // Calculate earnings when session ends
+  // Calculate earnings and auto-transfer when session ends
   useEffect(() => {
     if (!isSessionActive && sessionDuration > 0 && !sessionComplete) {
       const minutes = sessionDuration / 60;
@@ -119,6 +119,12 @@ function FeedbackPanel({
       setEarnedAmount(calculatedAmount);
       setSessionComplete(true);
       stopRecording(); // Stop any ongoing recording
+
+      // Automatically transfer to wallet
+      // In a real app, this would call an API to transfer funds
+      console.log(
+        `Auto-transferring $${calculatedAmount.toFixed(2)} to wallet...`
+      );
     }
   }, [
     isSessionActive,
@@ -337,17 +343,11 @@ function FeedbackPanel({
                     ${minPrice.toFixed(2)} - ${maxPrice.toFixed(2)}
                   </span>
                 </div>
+                <div className="summary-row">
+                  <span>Status:</span>
+                  <span className="transfer-status">Transferred to Wallet</span>
+                </div>
               </div>
-
-              <button
-                className="transfer-button"
-                onClick={() => {
-                  // Handle wallet transfer
-                  alert("Transferring to wallet...");
-                }}
-              >
-                Transfer to Wallet
-              </button>
             </div>
           ) : (
             <div className="chat-section">
