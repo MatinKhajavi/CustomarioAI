@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+pydantic
+python-dotenv
+langchain-mcp-m2m
+langchain-anthropic
+langgraph
+
+

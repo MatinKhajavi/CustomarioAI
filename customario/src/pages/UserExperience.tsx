@@ -25,6 +25,7 @@ function UserExperience() {
   const [sessionDuration, setSessionDuration] = useState(0);
   const [pausedDuration, setPausedDuration] = useState(0);
   const [pauseStartTime, setPauseStartTime] = useState<number | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
 
   useEffect(() => {
     if (isFeedbackActive && !isPaused && sessionStartTime) {
@@ -53,13 +54,19 @@ function UserExperience() {
     }
   }, [isPaused, pauseStartTime]);
 
-  const handleFABClick = () => {
+  const handleFABClick = async () => {
     // Start feedback session directly
     setIsFeedbackActive(true);
     setIsPanelOpen(true);
     setSessionStartTime(Date.now());
     setPausedDuration(0);
     setSessionDuration(0);
+
+    // Create a session ID (in production, this would come from the backend)
+    const newSessionId = `session_${Date.now()}_${Math.random()
+      .toString(36)
+      .substr(2, 9)}`;
+    setSessionId(newSessionId);
   };
 
   const handlePanelClose = () => {
@@ -113,6 +120,7 @@ function UserExperience() {
         sessionDuration={sessionDuration}
         minPrice={config.minPrice}
         maxPrice={config.maxPrice}
+        sessionId={sessionId || undefined}
       />
     </>
   );

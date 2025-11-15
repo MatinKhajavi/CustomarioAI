@@ -1,5 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import "./FeedbackPanel.css";
+import { vapiService } from "../services/vapiService";
+import type { VapiMessage } from "../services/vapiService";
+import { paymentService } from "../services/paymentService";
 
 interface FeedbackPanelProps {
   isOpen: boolean;
@@ -12,6 +15,7 @@ interface FeedbackPanelProps {
   sessionDuration: number;
   minPrice: number;
   maxPrice: number;
+  sessionId?: string;
 }
 
 function FeedbackPanel({
@@ -25,6 +29,7 @@ function FeedbackPanel({
   sessionDuration,
   minPrice,
   maxPrice,
+  sessionId,
 }: FeedbackPanelProps) {
   const [messages, setMessages] = useState<
     Array<{ type: "user" | "ai"; text: string; isVoice?: boolean }>
@@ -33,11 +38,8 @@ function FeedbackPanel({
   const [isProcessing, setIsProcessing] = useState(false);
   const [sessionComplete, setSessionComplete] = useState(false);
   const [earnedAmount, setEarnedAmount] = useState(0);
+  const [isCallActive, setIsCallActive] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
-  const streamRef = useRef<MediaStream | null>(null);
-  const autoRecordTimeoutRef = useRef<number | null>(null);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -56,55 +58,129 @@ function FeedbackPanel({
     return `${secs}s`;
   };
 
-  const stopRecording = useCallback(() => {
-    if (autoRecordTimeoutRef.current) {
-      clearTimeout(autoRecordTimeoutRef.current);
-      autoRecordTimeoutRef.current = null;
-    }
+  // Handle Vapi messages from SDK
+  const handleVapiMessage = useCallback((message: VapiMessage) => {
+    console.log("Vapi SDK message:", message);
 
-    if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.stop();
-      setIsRecording(false);
-    }
-  }, [isRecording]);
-
-  const handleVoiceMessage = useCallback((audioBlob: Blob) => {
-    setIsProcessing(true);
-
-    // Store audio blob for future processing
-    // In a real app, you would send this to an API for transcription/AI processing
-    console.log("Voice message recorded:", audioBlob.size, "bytes");
-
-    // Add user voice message
-    const userMessage = {
-      type: "user" as const,
-      text: "🎤 Voice message",
-      isVoice: true,
+    // Extract text content from various possible fields
+    const getTextContent = (msg: VapiMessage): string => {
+      return (
+        msg.transcript ||
+        msg.content ||
+        msg.message ||
+        msg.text ||
+        (typeof msg === "string" ? msg : "") ||
+        ""
+      );
     };
-    setMessages((prev) => [...prev, userMessage]);
 
-    // Simulate AI processing and response
-    setTimeout(() => {
-      const aiResponses = [
-        "That's really helpful feedback! Can you tell me more about that?",
-        "I understand. What else have you noticed while using TechFlow?",
-        "Thanks for sharing! How does that compare to other tools you've used?",
-        "That's interesting. What would make that better for you?",
-        "Got it! Any other thoughts or suggestions?",
-      ];
-      const randomResponse =
-        aiResponses[Math.floor(Math.random() * aiResponses.length)];
+    const textContent = getTextContent(message);
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          type: "ai",
-          text: randomResponse,
-        },
-      ]);
+    // Handle USER messages/transcripts
+    // Vapi SDK sends user transcripts with role="user" or type="transcript"
+    const isUserMessage =
+      message.role === "user" ||
+      (message.type === "transcript" && !message.role) || // Default transcript is user
+      message.type === "user-transcript" ||
+      message.type === "user-message";
 
+    if (isUserMessage) {
+      if (textContent && textContent.trim()) {
+        setMessages((prev) => {
+          // Check if we already have this exact message to avoid duplicates
+          const lastMessage = prev[prev.length - 1];
+          if (
+            lastMessage?.type === "user" &&
+            lastMessage.text === textContent.trim()
+          ) {
+            return prev;
+          }
+          return [
+            ...prev,
+            {
+              type: "user" as const,
+              text: textContent.trim(),
+              isVoice: true,
+            },
+          ];
+        });
+      }
+    }
+
+    // Handle ASSISTANT messages/responses
+    // Vapi SDK sends assistant messages with role="assistant" or in function call results
+    const isAssistantMessage =
+      message.role === "assistant" ||
+      message.type === "assistant-message" ||
+      message.type === "assistant-response" ||
+      (message.type === "function-call-result" && textContent);
+
+    if (isAssistantMessage) {
+      if (textContent && textContent.trim()) {
+        setMessages((prev) => {
+          // Check if we already have this exact message to avoid duplicates
+          const lastMessage = prev[prev.length - 1];
+          if (
+            lastMessage?.type === "ai" &&
+            lastMessage.text === textContent.trim()
+          ) {
+            return prev;
+          }
+          return [
+            ...prev,
+            {
+              type: "ai" as const,
+              text: textContent.trim(),
+            },
+          ];
+        });
+      }
+    }
+
+    // Handle function calls (can contain assistant responses)
+    if (
+      message.type === "function-call" ||
+      message.type === "function-call-result"
+    ) {
+      // If function call has a response message, show it
+      if (message.result || message.output) {
+        const resultText =
+          typeof message.result === "string"
+            ? message.result
+            : typeof message.output === "string"
+            ? message.output
+            : JSON.stringify(message.result || message.output);
+
+        if (resultText && resultText.trim()) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              type: "ai" as const,
+              text: resultText.trim(),
+            },
+          ]);
+        }
+      }
+      console.log("Function call:", message);
+    }
+
+    // Handle speech events from SDK
+    if (message.type === "speech-start") {
+      setIsProcessing(true);
+      setIsRecording(false);
+    } else if (message.type === "speech-end") {
       setIsProcessing(false);
-    }, 2000);
+      setIsRecording(true);
+    }
+
+    // Handle call start/end
+    if (message.type === "call-start") {
+      setIsCallActive(true);
+    } else if (message.type === "call-end") {
+      setIsRecording(false);
+      setIsProcessing(false);
+      setIsCallActive(false);
+    }
   }, []);
 
   // Calculate earnings and auto-transfer when session ends
@@ -118,13 +194,33 @@ function FeedbackPanel({
       );
       setEarnedAmount(calculatedAmount);
       setSessionComplete(true);
-      stopRecording(); // Stop any ongoing recording
+      setIsRecording(false);
 
-      // Automatically transfer to wallet
-      // In a real app, this would call an API to transfer funds
-      console.log(
-        `Auto-transferring $${calculatedAmount.toFixed(2)} to wallet...`
-      );
+      // End Vapi call and cleanup
+      vapiService.stopCall();
+
+      // Automatically send USDC payment (async)
+      (async () => {
+        try {
+          console.log(
+            `Sending payment of $${calculatedAmount.toFixed(2)} USDC...`
+          );
+          const paymentResult = await paymentService.sendPayment(
+            calculatedAmount,
+            undefined, // Use default recipient from backend config
+            `Feedback session payment - ${formatTimeShort(sessionDuration)}`
+          );
+
+          if (paymentResult.success) {
+            console.log("Payment sent successfully:", paymentResult);
+          } else {
+            console.error("Payment failed:", paymentResult.error);
+          }
+        } catch (error) {
+          console.error("Error sending payment:", error);
+          // Don't block the UI if payment fails
+        }
+      })();
     }
   }, [
     isSessionActive,
@@ -132,133 +228,87 @@ function FeedbackPanel({
     minPrice,
     maxPrice,
     sessionComplete,
-    stopRecording,
+    sessionId,
+    formatTimeShort,
   ]);
 
-  const startAutoRecording = useCallback(async () => {
-    if (isPaused || !isSessionActive || isRecording || isProcessing) {
-      return;
-    }
+  // Initialize Vapi call when session starts
+  useEffect(() => {
+    if (isSessionActive) {
+      const initializeVapi = async () => {
+        try {
+          // Initialize and start Vapi call using SDK
+          // The SDK handles all WebSocket and audio streaming internally
+          await vapiService.startCall(
+            {
+              sessionId: sessionId || "default",
+              surveyTopic: "User experience feedback",
+            },
+            handleVapiMessage
+          );
 
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: "audio/webm",
-      });
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
+          setIsRecording(true);
+          setMessages([
+            {
+              type: "ai",
+              text: "Hi! I'm ready to listen. Feel free to share your thoughts about TechFlow as you use it. I'm here to have a conversation with you!",
+            },
+          ]);
+        } catch (error) {
+          console.error("Error initializing Vapi:", error);
+          const errorMessage =
+            error instanceof Error ? error.message : "Unknown error";
 
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
+          // Provide helpful message for common errors
+          let userMessage = errorMessage;
+          if (
+            errorMessage.includes("Invalid Key") ||
+            errorMessage.includes("private key") ||
+            errorMessage.includes("public key")
+          ) {
+            userMessage =
+              "Invalid API Key: Make sure you're using your PUBLIC key (not private key) from https://dashboard.vapi.ai/keys. Public keys are safe for frontend use.";
+          } else if (errorMessage.includes("VAPI_PUBLIC_KEY not found")) {
+            userMessage =
+              "API Key not found. Please add VITE_VAPI_PUBLIC_KEY to your .env file and restart the dev server.";
+          } else if (errorMessage.includes("VAPI_ASSISTANT_ID not found")) {
+            userMessage =
+              "Assistant ID not found. Please add VITE_VAPI_ASSISTANT_ID to your .env file and restart the dev server.";
+          }
+
+          setMessages([
+            {
+              type: "ai",
+              text: `Sorry, I'm having trouble connecting: ${userMessage}`,
+            },
+          ]);
         }
       };
 
-      mediaRecorder.onstop = () => {
-        if (audioChunksRef.current.length > 0) {
-          const audioBlob = new Blob(audioChunksRef.current, {
-            type: "audio/webm",
-          });
-          handleVoiceMessage(audioBlob);
-        }
-
-        // Stop all tracks
-        if (streamRef.current) {
-          streamRef.current.getTracks().forEach((track) => track.stop());
-          streamRef.current = null;
-        }
-      };
-
-      mediaRecorder.start();
-      setIsRecording(true);
-
-      // Auto-stop after 5 seconds (simulating voice activity detection)
-      // In a real app, you'd use actual voice activity detection
-      autoRecordTimeoutRef.current = window.setTimeout(() => {
-        stopRecording();
-      }, 5000);
-    } catch (error) {
-      console.error("Error accessing microphone:", error);
-      // Don't show alert, just log - user might not want to grant permission
+      initializeVapi();
     }
-  }, [
-    isPaused,
-    isSessionActive,
-    isRecording,
-    isProcessing,
-    stopRecording,
-    handleVoiceMessage,
-  ]);
 
-  // Initialize chat and start auto-recording when session starts
-  useEffect(() => {
-    if (isSessionActive && messages.length === 0) {
-      setMessages([
-        {
-          type: "ai",
-          text: "Hi! I'm listening. Feel free to share your thoughts about TechFlow as you use it. I'm here to have a conversation with you!",
-        },
-      ]);
-    }
-  }, [isSessionActive, messages.length]);
-
-  // Auto-start recording when session becomes active
-  useEffect(() => {
-    if (
-      isSessionActive &&
-      !isPaused &&
-      !isRecording &&
-      !isProcessing &&
-      messages.length > 0
-    ) {
-      const timer = setTimeout(() => {
-        startAutoRecording();
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [
-    isSessionActive,
-    isPaused,
-    isRecording,
-    isProcessing,
-    messages.length,
-    startAutoRecording,
-  ]);
-
-  // Stop recording when session is paused
-  useEffect(() => {
-    if (isPaused && isRecording) {
-      stopRecording();
-    }
-  }, [isPaused, isRecording, stopRecording]);
-
-  // Auto-start recording after AI response
-  useEffect(() => {
-    if (
-      !isProcessing &&
-      isSessionActive &&
-      !isPaused &&
-      !isRecording &&
-      messages.length > 1
-    ) {
-      // Check if last message was from AI
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage.type === "ai") {
-        const timer = setTimeout(() => {
-          startAutoRecording();
-        }, 2000);
-        return () => clearTimeout(timer);
+    // Cleanup on unmount or session end
+    return () => {
+      if (!isSessionActive) {
+        vapiService.stopCall();
       }
+    };
+  }, [isSessionActive, handleVapiMessage, sessionId]);
+
+  // Handle pause/resume with Vapi SDK
+  // Only call setMuted after the call is active
+  useEffect(() => {
+    if (!isCallActive) return; // Wait for call to be active
+
+    if (isPaused) {
+      setIsRecording(false);
+      vapiService.setMuted(true);
+    } else if (isSessionActive) {
+      setIsRecording(true);
+      vapiService.setMuted(false);
     }
-  }, [
-    isProcessing,
-    isSessionActive,
-    isPaused,
-    isRecording,
-    messages,
-    startAutoRecording,
-  ]);
+  }, [isPaused, isSessionActive, isCallActive]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
