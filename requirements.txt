@@ -1,0 +1,11 @@
+fastapi
+uvicorn
+pydantic
+python-dotenv
+anthropic
+livekit
+livekit-agents[silero,turn-detector]
+livekit-plugins-noise-cancellation
+httpx
+claude-agent-sdk
+
