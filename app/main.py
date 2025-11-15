@@ -21,6 +21,8 @@ from app.models import (
 )
 from app.storage import storage
 from app.agents.insights_agent import generate_insights
+from livekit import api
+import os
 
 # Initialize FastAPI
 app = FastAPI(
@@ -227,21 +229,48 @@ async def get_survey_sessions(survey_id: str):
 # ============================================================================
 
 @app.post("/session/{session_id}/token")
-async def get_livekit_token(session_id: str):
+async def get_livekit_token(session_id: str, identity: str = "user"):
     """
     Generate LiveKit access token for a session
     
-    This would be called by the frontend to connect to the voice agent
+    This is called by the frontend widget to connect to the voice agent
     """
     session = storage.get_session(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     
-    # In production, generate actual LiveKit token
-    # For now, return mock token
+    # Get LiveKit credentials
+    livekit_url = os.getenv("LIVEKIT_URL")
+    api_key = os.getenv("LIVEKIT_API_KEY")
+    api_secret = os.getenv("LIVEKIT_API_SECRET")
+    
+    if not all([livekit_url, api_key, api_secret]):
+        # Fallback for development without LiveKit
+        return {
+            "token": f"mock_token_{session_id}",
+            "room_name": f"survey-{session_id}",
+            "url": "wss://mock-livekit.example.com",
+            "session_id": session_id,
+            "note": "LiveKit credentials not configured - using mock token"
+        }
+    
+    # Generate actual LiveKit token
+    room_name = f"survey-{session_id}"
+    
+    token = api.AccessToken(api_key, api_secret) \
+        .with_identity(identity) \
+        .with_name(f"User {identity}") \
+        .with_grants(api.VideoGrants(
+            room_join=True,
+            room=room_name,
+            can_publish=True,
+            can_subscribe=True,
+        )).to_jwt()
+    
     return {
-        "token": f"mock_token_{session_id}",
-        "room_name": f"survey-{session_id}",
+        "token": token,
+        "room_name": room_name,
+        "url": livekit_url,
         "session_id": session_id
     }
 
