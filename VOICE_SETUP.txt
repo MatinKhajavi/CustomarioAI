@@ -1,0 +1,267 @@
+🎤 VOICE AGENT SETUP GUIDE
+==========================
+
+The voice agent now works entirely in the frontend (browser).
+Here's how to set it up:
+
+STEP 1: Get OpenAI API Key
+---------------------------
+1. Go to https://platform.openai.com/api-keys
+2. Create a new API key
+3. Copy it (you'll need it for Step 2)
+
+Note: You need an OpenAI account with credits/billing set up.
+The Realtime API costs approximately $0.06 per minute of audio (input)
+and $0.24 per minute of audio (output).
+
+
+STEP 2: Configure Frontend
+---------------------------
+Create the file: customario/.env
+
+Add this content:
+```
+VITE_OPENAI_API_KEY=sk-proj-your-actual-key-here
+VITE_API_BASE_URL=http://localhost:8000
+```
+
+Replace `sk-proj-your-actual-key-here` with your real OpenAI API key.
+
+IMPORTANT: 
+- The file MUST be named `.env` (with the dot)
+- It MUST be in the `customario/` folder
+- Add your REAL API key (starts with sk-proj- or sk-)
+
+
+STEP 3: Configure Backend
+--------------------------
+Create the file: .env (in root folder)
+
+Add this content:
+```
+ANTHROPIC_API_KEY=your-anthropic-key-here
+```
+
+This is for the evaluation/targeting agents (uses Claude).
+Get it from: https://console.anthropic.com/settings/keys
+
+
+STEP 4: Install Dependencies
+-----------------------------
+Backend:
+```bash
+pip install -r requirements.txt
+```
+
+Frontend:
+```bash
+cd customario
+npm install
+cd ..
+```
+
+
+STEP 5: Start Everything
+-------------------------
+Terminal 1 - Backend:
+```bash
+python run.py
+```
+
+Terminal 2 - Frontend:
+```bash
+cd customario
+npm run dev
+```
+
+
+STEP 6: Test the Voice Agent
+-----------------------------
+1. Open http://localhost:5173 in your browser
+   (Chrome/Edge recommended for best audio support)
+
+2. Fill out the admin form:
+   - Set price range (e.g., $5 - $20)
+   - Survey topic: "Product feedback"
+   - Success criteria: "Get detailed user opinions"
+   - Click "Generate Survey Questions"
+
+3. Review the AI-generated questions
+   - Click "Create Survey & Start Session"
+
+4. Click the "Feedback" button (floating button on right)
+
+5. Allow microphone access when prompted
+
+6. The AI will speak to you! 🎤
+   - Listen to the question
+   - Answer naturally by speaking
+   - Your words will appear on screen (transcribed)
+   - The conversation continues automatically
+
+7. When done:
+   - The AI will say "Thank you" and end automatically
+   - OR click "End Session" manually
+   - You'll see your payment amount and quality feedback
+
+
+TROUBLESHOOTING
+----------------
+
+❌ "OpenAI API key not configured"
+→ Check that customario/.env exists with VITE_OPENAI_API_KEY
+→ Restart the frontend (npm run dev)
+→ Hard refresh browser (Cmd+Shift+R or Ctrl+Shift+R)
+
+❌ "Failed to connect to OpenAI Realtime API"
+→ Check your API key is valid
+→ Check you have credits/billing set up in OpenAI account
+→ Open browser console (F12) to see detailed error
+
+❌ "Microphone permission denied"
+→ Click the 🎤 icon in browser address bar
+→ Allow microphone access
+→ Refresh and try again
+
+❌ No audio playing from AI
+→ Check browser volume is up
+→ Check system volume is up
+→ Try Chrome/Edge (best support for Web Audio API)
+→ Open console to see if audio errors
+
+❌ Voice falls back to text mode
+→ Check VITE_OPENAI_API_KEY is set
+→ Check console for specific error
+→ Text mode will work as fallback
+
+❌ "WebSocket error"
+→ Check internet connection
+→ Check API key is valid and has credits
+→ Try again in a minute (rate limits)
+
+
+HOW IT WORKS
+------------
+
+Frontend (Browser):
+1. Gets questions from backend API
+2. Opens WebSocket to OpenAI Realtime API
+3. Captures microphone audio (24kHz PCM16)
+4. Streams audio to OpenAI
+5. Receives AI audio responses
+6. Plays audio through speakers
+7. Auto-transcribes both sides (Whisper)
+8. Detects when survey is complete
+9. Sends final transcript to backend
+
+Backend (Python):
+1. Generates questions (Claude)
+2. Creates survey in database
+3. Waits for transcript
+4. Evaluates responses (Claude)
+5. Calculates payment
+6. Returns results
+
+The voice conversation happens ENTIRELY in the browser.
+Backend is only used for:
+- Question generation
+- Transcript evaluation
+- Payment calculation
+
+
+ARCHITECTURE
+------------
+```
+Browser                    OpenAI              Backend
+   |                         |                    |
+   |--[Get questions]------->|                    |
+   |<--[Questions returned]--|                    |
+   |                         |                    |
+   |--[WebSocket connect]--->|                    |
+   |<--[Session created]-----|                    |
+   |                         |                    |
+   |--[Audio stream]-------->|                    |
+   |<--[Audio response]------|                    |
+   |                         |                    |
+   |  (Conversation repeats)                     |
+   |                         |                    |
+   |--[Survey complete]------|                    |
+   |                         |                    |
+   |----------[Transcript]----------------------->|
+   |<---------[Evaluation & Payment]-------------|
+```
+
+
+COSTS (OpenAI Realtime API)
+----------------------------
+Audio Input (you speaking): ~$0.06/minute
+Audio Output (AI speaking): ~$0.24/minute
+
+Example: 5-minute survey = ~$1.50
+- Your speech: 2.5 min × $0.06 = $0.15
+- AI speech: 2.5 min × $0.24 = $0.60
+- Transcription: included
+Total: ~$0.75
+
+Make sure you have credits in your OpenAI account!
+
+
+CHECKING IF IT WORKS
+---------------------
+Open browser console (F12) and look for:
+```
+🎙️ Starting voice conversation...
+✅ Microphone access granted
+✅ Audio context created: 24000 Hz
+🔌 Connecting to OpenAI Realtime API...
+✅ Connected to OpenAI Realtime API
+📤 Sending session config...
+🎤 Starting audio capture...
+✅ Audio pipeline connected
+✅ Audio capture started
+✅ Session created, ready to speak!
+✅ Session configured
+```
+
+If you see all these ✅ then voice is working!
+
+When the AI speaks, you'll see:
+```
+🤖 [Agent]: Hi! Thanks for participating...
+```
+
+When you speak, you'll see:
+```
+🎙️ Speech started
+👤 [You]: Your transcribed words here
+🎙️ Speech stopped
+```
+
+
+SECURITY NOTE
+-------------
+⚠️ The OpenAI API key is in the frontend .env file and exposed to the browser.
+
+For PRODUCTION, you should:
+1. Create a backend proxy endpoint
+2. Backend connects to OpenAI (keeps key secret)
+3. Frontend connects to your backend via WebSocket
+4. Your backend relays messages between frontend and OpenAI
+
+For DEVELOPMENT/TESTING: Direct connection is fine.
+
+
+NEED HELP?
+----------
+1. Check browser console (F12) for detailed logs
+2. Every step is logged with emoji icons
+3. Look for ❌ error messages
+4. All audio events are logged
+
+Common issues:
+- Wrong API key format
+- No credits in OpenAI account  
+- Microphone blocked by browser
+- CORS issues (use localhost, not 127.0.0.1)
+- Browser doesn't support Web Audio API (use Chrome)
+

@@ -17,15 +17,14 @@ from app.payment import process_payment
 async def start_session_phase(session_id: str) -> dict:
     """
     Phase 1: Start session
-    - Generate context with targeting agent
-    - Set up LiveKit room
+    - Use existing survey questions (context already generated)
     - Mark session as ready for voice interaction
     
     Args:
         session_id: The session to start
     
     Returns:
-        dict: LiveKit connection details and context
+        dict: Session details with questions ready for voice agent
     """
     # Get session and survey
     session = storage.get_session(session_id)
@@ -39,8 +38,8 @@ async def start_session_phase(session_id: str) -> dict:
     try:
         print(f"[Orchestrator] Starting session {session_id}")
         
-        # Step 1: Targeting Agent - Generate context
-        print(f"[Orchestrator] Generating context...")
+        # Generate briefing context for voice agent
+        print(f"[Orchestrator] Generating voice agent briefing...")
         context = await generate_context(survey)
         
         # Update session
@@ -101,15 +100,18 @@ async def complete_session_phase(session_id: str, transcript: str) -> dict:
         print(f"[Orchestrator] Evaluating transcript...")
         score, notes, payment_amount = await evaluate_transcript(survey, transcript)
         
-        # Step 2: Payment - Process payment
-        print(f"[Orchestrator] Processing payment of ${payment_amount:.2f}...")
-        payment_result = await process_payment(session_id, payment_amount)
+        # Define amount_tobepaid from evaluation
+        amount_tobepaid = payment_amount
+        
+        # Step 2: Payment - Process payment with evaluated amount
+        print(f"[Orchestrator] Processing payment of ${amount_tobepaid:.2f}...")
+        payment_result = await process_payment(session_id, amount_tobepaid)
         
         # Update session with evaluation and payment
         storage.update_session(session_id, {
             "evaluation_score": score,
             "evaluation_notes": notes,
-            "payment_amount": payment_amount,
+            "payment_amount": amount_tobepaid,
             "payment_status": payment_result["status"],
             "status": SessionStatus.COMPLETED.value,
             "completed_at": datetime.now().isoformat()
@@ -118,14 +120,20 @@ async def complete_session_phase(session_id: str, transcript: str) -> dict:
         print(f"[Orchestrator] Session {session_id} completed!")
         
         # Prepare results to return to user immediately
+        if payment_result["status"] == "success":
+            message = f"Thank you! You've earned ${amount_tobepaid:.2f}"
+        else:
+            message = f"Thank you! Payment of ${amount_tobepaid:.2f} is being processed."
+        
         user_result = {
             "session_id": session_id,
             "score": score,
-            "payment_amount": payment_amount,
+            "payment_amount": amount_tobepaid,
             "payment_status": payment_result["status"],
-            "transaction_id": payment_result["transaction_id"],
+            "transaction_id": payment_result.get("transaction_id"),
             "evaluation_notes": notes,
-            "message": f"Thank you! You've earned ${payment_amount:.2f}"
+            "message": message,
+            "payment_details": payment_result
         }
         
         return user_result

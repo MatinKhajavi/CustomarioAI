@@ -165,6 +165,76 @@
   box-shadow: none;
 }
 
+.loading-message {
+  text-align: center;
+  color: #667eea;
+  font-size: 0.875rem;
+  margin-bottom: 1rem;
+  font-weight: 500;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.generated-content {
+  margin: 2rem 0;
+  padding: 1.5rem;
+  background: #f7fafc;
+  border-radius: 12px;
+  border: 2px solid #e2e8f0;
+}
+
+.generated-content h3 {
+  margin: 0 0 1.5rem 0;
+  color: #2d3748;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.questions-section,
+.criteria-section {
+  margin-bottom: 1.5rem;
+}
+
+.questions-section:last-child,
+.criteria-section:last-child {
+  margin-bottom: 0;
+}
+
+.generated-content h4 {
+  margin: 0 0 0.75rem 0;
+  color: #4a5568;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.generated-content ol,
+.generated-content ul {
+  margin: 0;
+  padding-left: 1.5rem;
+  color: #2d3748;
+}
+
+.generated-content li {
+  margin-bottom: 0.5rem;
+  line-height: 1.6;
+}
+
+.generated-content li:last-child {
+  margin-bottom: 0;
+}
+
+.criteria-section strong {
+  color: #667eea;
+}
+
 @media (max-width: 640px) {
   .admin-card {
     padding: 2rem 1.5rem;

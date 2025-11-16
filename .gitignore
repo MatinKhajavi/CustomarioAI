@@ -41,6 +41,7 @@ __pypackages__/
 # Environment variables
 .env
 .env.local
+customario/.env
 
 # Data
 data/

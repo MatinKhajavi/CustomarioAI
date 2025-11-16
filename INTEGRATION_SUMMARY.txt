@@ -1,0 +1,191 @@
+CUSTOMARIO FRONTEND-BACKEND INTEGRATION
+========================================
+
+COMPLETED CHANGES
+-----------------
+
+1. BACKEND (app/ folder)
+   ✓ Added /generate-context endpoint
+     - Takes survey topic, success criteria, price range
+     - Uses targeting agent to generate questions & criteria
+     - Returns structured survey data
+   
+   ✓ Updated targeting_agent.py
+     - Added generate_questions_and_criteria() function
+     - Uses Claude with tool calling to generate survey structure
+     - Creates 3-5 questions and 2-4 evaluation criteria
+   
+   ✓ Updated main.py
+     - Added GenerateContextRequest and CompleteSessionRequest models
+     - Fixed complete_session endpoint to accept request body properly
+   
+   ✓ Existing endpoints used:
+     - POST /survey/create - Creates survey
+     - POST /survey/{id}/session/start - Starts session
+     - POST /session/{id}/complete - Evaluates & pays
+
+
+2. FRONTEND (customario/src/ folder)
+   ✓ Created services/apiService.ts
+     - Complete API client for backend
+     - Methods for all CRUD operations
+     - TypeScript interfaces matching backend models
+   
+   ✓ Updated AdminPage.tsx
+     - Calls /generate-context when form submitted
+     - Generates questions/criteria from user input
+     - Creates survey via backend API
+     - Shows loading states
+     - Navigates to /user with survey ID
+   
+   ✓ Updated UserExperience.tsx
+     - Receives surveyId from AdminPage
+     - Calls /session/start when FAB clicked
+     - Gets context and questions from backend
+     - Passes data to FeedbackPanel
+   
+   ✓ Updated FeedbackPanel.tsx
+     - Accepts questions from backend
+     - Shows AI-generated questions
+     - Collects user responses (text input for now)
+     - Builds transcript from messages
+     - Calls /session/complete when ended
+     - Shows evaluation results & payment
+     - Displays evaluation notes
+   
+   ✓ Updated FeedbackFAB.tsx
+     - Added disabled prop for loading state
+   
+   ✓ Updated App.tsx
+     - Changed default route to /admin
+
+
+3. STYLING
+   ✓ Added CSS for loading message (App.css)
+   ✓ Added CSS for text input (FeedbackPanel.css)
+   ✓ Added CSS for evaluation feedback display
+   ✓ Added pulse animation for loading states
+
+
+FLOW OVERVIEW
+-------------
+
+1. ADMIN PAGE (/admin)
+   User fills form:
+   - Price range (min/max)
+   - Survey topic
+   - Success criteria
+   
+   On submit:
+   → POST /generate-context
+   ← AI generates questions & criteria
+   → POST /survey/create
+   ← Survey created with ID
+   → Navigate to /user with surveyId
+
+2. USER PAGE (/user)
+   User clicks "Feedback" FAB
+   
+   On click:
+   → POST /survey/{id}/session/start
+   ← Session created with questions & context
+   → Show FeedbackPanel with questions
+
+3. FEEDBACK PANEL
+   User types responses to questions
+   Messages build up in chat
+   
+   On "End Session":
+   → Build transcript from messages
+   → POST /session/{id}/complete
+   ← Evaluation results returned
+   → Show payment amount & quality notes
+
+4. BACKEND PROCESSING
+   When session completes:
+   - Evaluation Agent scores transcript
+   - Payment calculated based on quality
+   - Session updated with results
+   - Insights generated in background
+
+
+AGENT FLOW
+----------
+
+Targeting Agent (generate_questions_and_criteria):
+- Input: Survey topic, success criteria, price range
+- Process: Uses Claude to design survey structure
+- Output: Questions list, Criteria list
+
+Voice Agent (future - currently text):
+- Input: Questions from targeting agent
+- Process: Conducts conversation (OpenAI Realtime)
+- Output: Transcript
+
+Evaluation Agent (evaluate_transcript):
+- Input: Survey config, transcript
+- Process: Scores based on criteria weights
+- Output: Score (0-100), notes, payment amount
+
+Insights Agent (background):
+- Input: All completed sessions for survey
+- Process: Analyzes patterns and themes
+- Output: Actionable insights for company
+
+
+KEY FILES CHANGED
+-----------------
+Backend:
+  app/main.py - Added endpoints
+  app/agents/targeting_agent.py - Added generation function
+  
+Frontend:
+  customario/src/services/apiService.ts - NEW
+  customario/src/pages/AdminPage.tsx - API integration
+  customario/src/pages/UserExperience.tsx - Session management
+  customario/src/components/FeedbackPanel.tsx - Completion flow
+  customario/src/components/FeedbackFAB.tsx - Loading state
+  customario/src/App.tsx - Default route
+  customario/src/App.css - Loading styles
+  customario/src/components/FeedbackPanel.css - Input styles
+
+
+TESTING CHECKLIST
+-----------------
+[ ] Backend starts without errors (python run.py)
+[ ] Frontend starts without errors (npm run dev)
+[ ] Can access /admin page
+[ ] Can fill out admin form
+[ ] Questions are generated successfully
+[ ] Survey is created
+[ ] Redirected to /user page
+[ ] Can click feedback FAB
+[ ] Session starts successfully
+[ ] Questions appear in panel
+[ ] Can type and send messages
+[ ] Can end session
+[ ] Evaluation completes
+[ ] Payment amount displayed
+[ ] Evaluation notes shown
+
+
+NOTES
+-----
+- Voice integration is simulated with text input
+- Real voice would require WebSocket or LiveKit integration
+- Payment is calculated but not actually transferred
+- All AI operations use Claude except voice (OpenAI)
+- Data persists in JSON files
+
+
+FUTURE ENHANCEMENTS
+-------------------
+- Real voice integration with OpenAI Realtime API
+- WebSocket for streaming voice data
+- LiveKit integration for production voice
+- Actual payment processing (Stripe, crypto, etc.)
+- Database instead of JSON files
+- User authentication
+- Multi-language support
+- Analytics dashboard
+

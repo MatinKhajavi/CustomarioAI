@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { apiService } from "../services/apiService";
 import "../App.css";
 
 interface SurveyConfig {
@@ -21,6 +22,24 @@ function AdminPage() {
   const [errors, setErrors] = useState<
     Partial<Record<keyof SurveyConfig, string>>
   >({});
+  const [isCreating, setIsCreating] = useState(false);
+  const [existingSurveys, setExistingSurveys] = useState<any[]>([]);
+
+  useEffect(() => {
+    loadExistingSurveys();
+  }, []);
+
+  const loadExistingSurveys = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/surveys');
+      if (response.ok) {
+        const surveys = await response.json();
+        setExistingSurveys(surveys);
+      }
+    } catch (error) {
+      console.error('Error loading surveys:', error);
+    }
+  };
 
   const handleInputChange = (
     field: keyof SurveyConfig,
@@ -56,14 +75,78 @@ function AdminPage() {
     return Object.keys(newErrors).length === 0;
   };
 
-  const handleNext = () => {
-    if (validateForm()) {
-      // Save config and navigate to user experience
-      console.log("Configuration saved:", config);
-      // Pass config to user experience page
-      navigate("/user", {
-        state: { config },
+  const handleCreateSurvey = async () => {
+    if (!validateForm()) {
+      return;
+    }
+
+    setIsCreating(true);
+
+    try {
+      // Parse questions from text (one per line)
+      const questions = config.surveyTopic
+        .split('\n')
+        .map(q => q.trim())
+        .filter(q => q.length > 0);
+
+      if (questions.length === 0) {
+        alert("Please enter at least one question");
+        setIsCreating(false);
+        return;
+      }
+
+      // Simple default criteria
+      const criteria = [
+        {
+          name: "Response Quality",
+          weight: 0.5,
+          description: "Detailed and thoughtful responses"
+        },
+        {
+          name: "Relevance",
+          weight: 0.3,
+          description: "Stayed on topic and answered questions"
+        },
+        {
+          name: "Actionability",
+          weight: 0.2,
+          description: "Provided actionable feedback"
+        }
+      ];
+
+      // Create survey directly
+      const survey = await apiService.createSurvey({
+        title: questions[0].substring(0, 100), // Use first question as title
+        questions: questions,
+        criteria: criteria,
+        price_range: {
+          min_amount: config.minPrice,
+          max_amount: config.maxPrice,
+        },
       });
+
+      console.log("Survey created:", survey);
+
+      // Navigate to user experience with survey ID
+      navigate("/user", {
+        state: {
+          surveyId: survey.survey_id,
+          config: {
+            minPrice: config.minPrice,
+            maxPrice: config.maxPrice,
+            surveyTopic: questions.join(', '),
+          },
+        },
+      });
+    } catch (error) {
+      console.error("Error creating survey:", error);
+      alert(
+        `Failed to create survey: ${
+          error instanceof Error ? error.message : "Unknown error"
+        }`
+      );
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -127,14 +210,18 @@ function AdminPage() {
 
           <div className="form-group">
             <label htmlFor="surveyTopic" className="form-label">
-              What is the survey about?
+              What questions do you want to ask the user?
             </label>
             <textarea
               id="surveyTopic"
               className={`form-textarea ${errors.surveyTopic ? "error" : ""}`}
               value={config.surveyTopic}
               onChange={(e) => handleInputChange("surveyTopic", e.target.value)}
-              placeholder="Describe what this survey will focus on. For example: 'Customer satisfaction with our new product features' or 'Employee feedback on workplace culture'..."
+              placeholder="Enter your questions, one per line:
+
+How would you rate our product out of 10?
+What features do you want to see?
+What problems did you face?"
               rows={5}
             />
             {errors.surveyTopic && (
@@ -173,12 +260,74 @@ function AdminPage() {
         <div className="form-actions">
           <button
             className="next-button"
-            onClick={handleNext}
-            disabled={!config.surveyTopic.trim()}
+            onClick={handleCreateSurvey}
+            disabled={!config.surveyTopic.trim() || isCreating}
           >
-            Start Feedback Session
+            {isCreating ? "Creating..." : "Create Feedback form"}
           </button>
         </div>
+
+        {/* Existing Surveys */}
+        {existingSurveys.length > 0 && (
+          <div style={{ marginTop: "3rem", borderTop: "1px solid #e2e8f0", paddingTop: "2rem" }}>
+            <h2 style={{ marginBottom: "1rem", fontSize: "1.5rem", color: "#2d3748" }}>
+              Existing Surveys
+            </h2>
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              {existingSurveys.map((survey) => (
+                <div
+                  key={survey.survey_id}
+                  style={{
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "8px",
+                    padding: "1rem",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    background: "white",
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 600, color: "#2d3748", marginBottom: "0.25rem" }}>
+                      {survey.title}
+                    </div>
+                    <div style={{ fontSize: "0.875rem", color: "#718096" }}>
+                      {survey.questions?.length || 0} questions • Created {new Date(survey.created_at).toLocaleDateString()}
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: "0.5rem" }}>
+                    <button
+                      className="secondary-button"
+                      onClick={() => navigate(`/insights/${survey.survey_id}`)}
+                      style={{
+                        padding: "0.5rem 1rem",
+                        fontSize: "0.875rem",
+                        background: "white",
+                        border: "2px solid #667eea",
+                        color: "#667eea",
+                        borderRadius: "6px",
+                        cursor: "pointer",
+                        fontWeight: 600,
+                      }}
+                    >
+                      View Insights
+                    </button>
+                    <button
+                      className="next-button"
+                      onClick={() => navigate("/user", { state: { surveyId: survey.survey_id } })}
+                      style={{
+                        padding: "0.5rem 1rem",
+                        fontSize: "0.875rem",
+                      }}
+                    >
+                      Test Survey
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import "./FeedbackPanel.css";
-import { paymentService } from "../services/paymentService";
+import { apiService } from "../services/apiService";
+import { VoiceAgent } from "../services/voiceAgent";
 
 interface FeedbackPanelProps {
   isOpen: boolean;
@@ -14,6 +15,8 @@ interface FeedbackPanelProps {
   minPrice: number;
   maxPrice: number;
   sessionId?: string;
+  questions: string[];
+  surveyId?: string;
 }
 
 function FeedbackPanel({
@@ -28,6 +31,8 @@ function FeedbackPanel({
   minPrice,
   maxPrice,
   sessionId,
+  questions,
+  surveyId,
 }: FeedbackPanelProps) {
   const [messages, setMessages] = useState<
     Array<{ type: "user" | "ai"; text: string; isVoice?: boolean }>
@@ -35,7 +40,33 @@ function FeedbackPanel({
   const [isRecording, setIsRecording] = useState(false);
   const [sessionComplete, setSessionComplete] = useState(false);
   const [earnedAmount, setEarnedAmount] = useState(0);
+  const [evaluationNotes, setEvaluationNotes] = useState("");
+  const [isCompletingSession, setIsCompletingSession] = useState(false);
+  const [transcript, setTranscript] = useState<string>("");
+  const [userInput, setUserInput] = useState("");
+  const [voiceAgent, setVoiceAgent] = useState<VoiceAgent | null>(null);
+  const [useVoice, setUseVoice] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const handleSendMessage = () => {
+    if (userInput.trim() && !isPaused) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          type: "user",
+          text: userInput.trim(),
+        },
+      ]);
+      setUserInput("");
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -54,64 +85,120 @@ function FeedbackPanel({
     return `${secs}s`;
   };
 
-  // Calculate earnings and auto-transfer when session ends
+  // Complete session and evaluate when session ends
   useEffect(() => {
-    if (!isSessionActive && sessionDuration > 0 && !sessionComplete) {
-      const minutes = sessionDuration / 60;
-      const baseRate = (minPrice + maxPrice) / 2;
-      const calculatedAmount = Math.min(
-        maxPrice,
-        Math.max(minPrice, (baseRate * minutes) / 10)
-      );
-      setEarnedAmount(calculatedAmount);
-      setSessionComplete(true);
+    if (
+      !isSessionActive &&
+      sessionDuration > 0 &&
+      !sessionComplete &&
+      sessionId &&
+      surveyId &&
+      !isCompletingSession
+    ) {
+      setIsCompletingSession(true);
       setIsRecording(false);
 
-      // Automatically send USDC payment (async)
       (async () => {
         try {
-          console.log(
-            `Sending payment of $${calculatedAmount.toFixed(2)} USDC...`
-          );
-          const paymentResult = await paymentService.sendPayment(
-            calculatedAmount,
-            undefined, // Use default recipient from backend config
-            `Feedback session payment - ${formatTimeShort(sessionDuration)}`
+          console.log("📤 Sending transcript to backend for evaluation...");
+
+          // Use transcript if available (from voice agent), otherwise build from messages
+          let transcriptText = transcript;
+          if (!transcriptText) {
+            transcriptText = messages
+              .map((msg) => `${msg.type === "user" ? "User" : "Agent"}: ${msg.text}`)
+              .join("\n\n");
+          }
+
+          console.log("📝 Transcript length:", transcriptText.length, "characters");
+
+          // First, create the backend session (this is the ONLY time we hit backend during voice flow)
+          console.log("Creating backend session...");
+          const sessionResponse = await apiService.startSession(surveyId);
+          const backendSessionId = sessionResponse.session_id;
+
+          console.log("✅ Backend session created:", backendSessionId);
+
+          // Now evaluate the transcript
+          console.log("📊 Evaluating transcript...");
+          const result = await apiService.completeSession(
+            backendSessionId,
+            transcriptText
           );
 
-          if (paymentResult.success) {
-            console.log("Payment sent successfully:", paymentResult);
-          } else {
-            console.error("Payment failed:", paymentResult.error);
-          }
+          console.log("✅ Evaluation complete:", result);
+
+          // Update UI with results
+          setEarnedAmount(result.payment_amount);
+          setEvaluationNotes(result.evaluation_notes);
+          setSessionComplete(true);
         } catch (error) {
-          console.error("Error sending payment:", error);
-          // Don't block the UI if payment fails
+          console.error("❌ Error completing session:", error);
+          alert(
+            `Failed to complete session: ${
+              error instanceof Error ? error.message : "Unknown error"
+            }`
+          );
+        } finally {
+          setIsCompletingSession(false);
         }
       })();
     }
-  }, [
-    isSessionActive,
-    sessionDuration,
-    minPrice,
-    maxPrice,
-    sessionComplete,
-    sessionId,
-    formatTimeShort,
-  ]);
+  }, [isSessionActive, sessionDuration, sessionComplete, sessionId, surveyId, messages, transcript]);
 
   // Initialize session when it starts
   useEffect(() => {
-    if (isSessionActive) {
+    if (isSessionActive && questions.length > 0 && messages.length === 0) {
       setIsRecording(true);
-      setMessages([
-        {
-          type: "ai",
-          text: "Hi! I'm ready to listen. Feel free to share your thoughts about TechFlow as you use it. I'm here to have a conversation with you!",
+      
+      console.log("🎬 FeedbackPanel: Starting voice agent with questions:", questions);
+      console.log("🎬 FeedbackPanel: Questions length:", questions.length);
+      
+      // Try to start voice agent
+      const agent = new VoiceAgent(
+        questions,
+        (transcriptMessages) => {
+          // Update messages as conversation progresses
+          setMessages(transcriptMessages);
         },
-      ]);
+        (finalTranscript) => {
+          // Voice conversation complete
+          console.log("Voice conversation completed");
+          setTranscript(finalTranscript);
+          onEnd(); // Trigger session end
+        }
+      );
+
+      agent
+        .start()
+        .then(() => {
+          console.log("✅ Voice agent started successfully");
+          setVoiceAgent(agent);
+          setUseVoice(true);
+        })
+        .catch((error) => {
+          console.warn("⚠️ Could not start voice agent, falling back to text:", error);
+          setUseVoice(false);
+          
+          // Fallback to text mode
+          const greeting = `Hi! Thanks for participating in this feedback session. I'd love to hear your thoughts. Let's start with the first question:\n\n${questions[0]}`;
+          
+          setMessages([
+            {
+              type: "ai",
+              text: greeting,
+            },
+          ]);
+        });
+
+      // Cleanup function
+      return () => {
+        if (voiceAgent) {
+          voiceAgent.stop();
+        }
+      };
     }
-  }, [isSessionActive]);
+  }, [isSessionActive, questions]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -191,63 +278,62 @@ function FeedbackPanel({
                   <span>{formatTimeShort(sessionDuration)}</span>
                 </div>
                 <div className="summary-row">
-                  <span>Earnings Range:</span>
-                  <span>
-                    ${minPrice.toFixed(2)} - ${maxPrice.toFixed(2)}
-                  </span>
-                </div>
-                <div className="summary-row">
                   <span>Status:</span>
-                  <span className="transfer-status">Transferred to Wallet</span>
+                  <span className="transfer-status">Payment Processed</span>
                 </div>
               </div>
             </div>
+          ) : isCompletingSession ? (
+            <div className="processing-section">
+              <div className="processing-spinner">
+                <div className="spinner"></div>
+              </div>
+              <h3 className="processing-title">Processing...</h3>
+              <p className="processing-subtitle">Evaluating your responses</p>
+            </div>
           ) : (
-            <div className="chat-section">
-              <div className="messages-container">
-                {messages.map((message, index) => (
-                  <div
-                    key={index}
-                    className={`message ${
-                      message.type === "user" ? "user-message" : "ai-message"
-                    }`}
-                  >
-                    <div className="message-content">{message.text}</div>
+            <div className="voice-session-section">
+              {useVoice ? (
+                <div className="voice-active-indicator">
+                  <div className="voice-wave">
+                    <div className="wave-bar"></div>
+                    <div className="wave-bar"></div>
+                    <div className="wave-bar"></div>
+                    <div className="wave-bar"></div>
                   </div>
-                ))}
-                <div ref={messagesEndRef} />
-              </div>
-
-              <div className="voice-input-container">
-                {isRecording ? (
-                  <div className="recording-indicator-voice">
-                    <div className="recording-pulse"></div>
-                    <span className="recording-text-voice">Listening...</span>
-                  </div>
-                ) : (
-                  <div className="voice-status">
-                    <div className="status-icon">🎤</div>
-                    <span className="status-text">Ready to listen</span>
-                  </div>
-                )}
-              </div>
+                  <p className="voice-status">
+                    🎤 Voice conversation active
+                  </p>
+                  <p className="voice-hint">
+                    Speak naturally and answer the questions
+                  </p>
+                </div>
+              ) : (
+                <div className="voice-fallback">
+                  <p className="voice-note">
+                    💡 Voice mode unavailable. Using text mode instead.
+                  </p>
+                  <p className="voice-hint">
+                    (Add VITE_OPENAI_API_KEY to enable voice)
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>
 
-        {isSessionActive && !sessionComplete && (
+        {isSessionActive && !sessionComplete && !isCompletingSession && (
           <div className="panel-footer">
             <div className="session-controls">
-              {isPaused ? (
-                <button className="control-button resume" onClick={onResume}>
-                  ▶ Resume
-                </button>
-              ) : (
-                <button className="control-button pause" onClick={onPause}>
-                  ⏸ Pause
-                </button>
-              )}
-              <button className="control-button end" onClick={onEnd}>
+              <button
+                className="control-button end"
+                onClick={() => {
+                  if (voiceAgent) {
+                    voiceAgent.stop();
+                  }
+                  onEnd();
+                }}
+              >
                 ⏹ End Session
               </button>
             </div>
@@ -259,3 +345,4 @@ function FeedbackPanel({
 }
 
 export default FeedbackPanel;
+

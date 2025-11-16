@@ -1,12 +1,14 @@
 """
 FastAPI backend for CustomarioAI - Multi-agent feedback survey system
 """
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 from typing import List
 import uuid
 from datetime import datetime
 from dotenv import load_dotenv
+import asyncio
 
 # Load environment variables from .env file
 load_dotenv()
@@ -17,10 +19,13 @@ from app.models import (
     Session, 
     SessionCreate, 
     InsightsResponse,
-    SessionStatus
+    SessionStatus,
+    Criteria,
+    PriceRange
 )
 from app.storage import storage
 from app.agents.insights_agent import generate_insights
+from app.agents.targeting_agent import generate_questions_and_criteria
 from livekit import api
 import os
 
@@ -49,6 +54,40 @@ async def root():
         "status": "healthy",
         "version": "1.0.0"
     }
+
+
+# ============================================================================
+# CONTEXT GENERATION (Admin)
+# ============================================================================
+
+class GenerateContextRequest(BaseModel):
+    survey_topic: str
+    success_criteria: str
+    price_range: PriceRange
+
+class GeneratedContext(BaseModel):
+    questions: List[str]
+    criteria: List[Criteria]
+
+class CompleteSessionRequest(BaseModel):
+    transcript: str
+
+@app.post("/generate-context", response_model=GeneratedContext)
+async def generate_context_endpoint(request: GenerateContextRequest):
+    """
+    Generate survey questions and criteria from admin input
+    Uses the targeting agent to intelligently create the survey structure
+    """
+    questions, criteria = await generate_questions_and_criteria(
+        survey_topic=request.survey_topic,
+        success_criteria=request.success_criteria,
+        price_range=request.price_range
+    )
+    
+    return GeneratedContext(
+        questions=questions,
+        criteria=criteria
+    )
 
 
 # ============================================================================
@@ -171,7 +210,7 @@ async def start_session(survey_id: str):
 
 
 @app.post("/session/{session_id}/complete")
-async def complete_session(session_id: str, transcript: str, background_tasks: BackgroundTasks):
+async def complete_session(session_id: str, request: CompleteSessionRequest, background_tasks: BackgroundTasks):
     """
     Complete a feedback session
     
@@ -193,7 +232,7 @@ async def complete_session(session_id: str, transcript: str, background_tasks: B
     
     # Run completion phase
     from app.orchestrator import complete_session_phase, generate_insights_background
-    result = await complete_session_phase(session_id, transcript)
+    result = await complete_session_phase(session_id, request.transcript)
     
     # Generate insights in background (for company)
     background_tasks.add_task(generate_insights_background, session.survey_id)
@@ -222,6 +261,55 @@ async def get_survey_sessions(survey_id: str):
         raise HTTPException(status_code=404, detail="Survey not found")
     
     return storage.get_sessions_by_survey(survey_id)
+
+
+# ============================================================================
+# OPENAI REALTIME API (for voice agent connections)
+# ============================================================================
+
+@app.post("/api/realtime-token")
+async def generate_realtime_token():
+    """
+    Generate an ephemeral token for OpenAI Realtime API
+    Used by the frontend voice agent to connect securely
+    """
+    import httpx
+    
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    if not openai_api_key:
+        raise HTTPException(
+            status_code=500,
+            detail="OpenAI API key not configured on server"
+        )
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                'https://api.openai.com/v1/realtime/client_secrets',
+                headers={
+                    'Authorization': f'Bearer {openai_api_key}',
+                    'Content-Type': 'application/json',
+                },
+                json={
+                    'session': {
+                        'type': 'realtime',
+                        'model': 'gpt-4o-realtime-preview-2024-12-17',
+                    }
+                },
+                timeout=10.0
+            )
+            response.raise_for_status()
+            data = response.json()
+            
+            return {
+                'token': data.get('value'),  # The ephemeral key (starts with "ek_")
+                'expires_at': data.get('expires_at'),
+            }
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate realtime token: {str(e)}"
+        )
 
 
 # ============================================================================

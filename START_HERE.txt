@@ -1,0 +1,141 @@
+CustomarioAI - Getting Started
+================================
+
+STEP 1: Setup Environment
+--------------------------
+1. Copy env.example to .env and fill in your API keys:
+   - OPENAI_API_KEY (for voice conversations)
+   - ANTHROPIC_API_KEY (for evaluation & insights)
+
+2. Install backend dependencies:
+   pip install -r requirements.txt
+
+3. Install frontend dependencies:
+   cd customario
+   npm install
+   cd ..
+
+4. Create customario/.env with:
+   VITE_OPENAI_API_KEY=your_openai_api_key_here
+   VITE_API_BASE_URL=http://localhost:8000
+   
+   (This enables voice conversations in the browser)
+
+
+STEP 2: Start the Application
+------------------------------
+You need TWO terminals:
+
+Terminal 1 - Backend (Port 8000):
+   python run.py
+
+Terminal 2 - Frontend (Port 5173):
+   cd customario
+   npm run dev
+
+
+STEP 3: Use the Application
+----------------------------
+1. Open your browser to http://localhost:5173
+   (It will redirect to /admin)
+
+2. Fill out the Admin Form:
+   - Set price range (min/max)
+   - Describe your survey topic
+   - Define success criteria
+   - Click "Generate Survey Questions"
+   
+   The system will:
+   - Use AI (Claude) to generate survey questions
+   - Create evaluation criteria based on your input
+   - Show you the generated content immediately
+
+3. Review and Create Survey:
+   - Review the generated questions and criteria
+   - Click "Create Survey & Start Session"
+   - You'll be redirected to /user page
+
+4. Start Voice Conversation:
+   - Click the floating "Feedback" button
+   - Allow microphone access when prompted
+   - The AI will speak to you with voice!
+   - Answer the questions naturally
+   - The conversation will be transcribed automatically
+   - Click "End Session" when done (or wait for AI to complete)
+
+5. Get Your Payment:
+   - The system evaluates your responses
+   - Calculates payment based on quality
+   - Shows you how much you earned
+   - Displays quality feedback
+
+Note: If voice fails (no OpenAI API key), it falls back to text mode
+
+
+FLOW SUMMARY
+------------
+Admin Page:
+  1. Generate questions & criteria (Claude AI)
+  2. Review generated content
+  3. Create survey → Navigate to user page
+    ↓
+User Page:
+  1. Click feedback button
+  2. Start session (uses already-generated questions)
+    ↓
+Feedback Panel:
+  1. VOICE MODE: Real voice conversation with OpenAI Realtime API
+     - Microphone captures audio
+     - AI speaks responses
+     - Auto-transcribed in real-time
+  2. FALLBACK: Text mode if no API key
+    ↓
+Session Complete:
+  1. Transcript sent to evaluation agent
+  2. Payment calculated based on quality
+  3. Results displayed immediately
+
+
+ARCHITECTURE
+------------
+Frontend (React + TypeScript):
+  - /admin - Survey creation page
+  - /user - User feedback experience
+  - /results - Payment results (optional)
+
+Backend (FastAPI + Python):
+  - POST /generate-context - AI generates questions/criteria
+  - POST /survey/create - Creates survey
+  - POST /survey/{id}/session/start - Starts feedback session
+  - POST /session/{id}/complete - Evaluates & processes payment
+
+Agents:
+  - Targeting Agent - Generates survey structure from admin input
+  - Voice Agent - Conducts conversation (OpenAI Realtime API)
+  - Evaluation Agent - Scores responses & calculates payment
+  - Insights Agent - Generates company insights (background)
+
+
+NOTES
+-----
+- ✅ REAL VOICE is now integrated using OpenAI Realtime API!
+  - Voice agent runs in the browser
+  - Captures microphone audio
+  - Streams to OpenAI WebSocket
+  - AI speaks back to you
+  - Auto-transcribes conversation
+  
+- Admin sees generated questions IMMEDIATELY (no waiting)
+- Questions are generated once, then reused for all sessions
+- Voice fallback to text mode if API key is missing
+- All agents use Claude (Anthropic) except voice (OpenAI)
+- Payment is calculated but not actually transferred
+- Data is stored in JSON files (data/surveys.json, data/sessions.json)
+
+VOICE MODE REQUIREMENTS
+-----------------------
+- VITE_OPENAI_API_KEY in customario/.env
+- Browser with microphone support
+- HTTPS (or localhost for development)
+- User grants microphone permission
+

@@ -2,13 +2,15 @@ import "./FeedbackFAB.css";
 
 interface FeedbackFABProps {
   onClick: () => void;
+  disabled?: boolean;
 }
 
-function FeedbackFAB({ onClick }: FeedbackFABProps) {
+function FeedbackFAB({ onClick, disabled }: FeedbackFABProps) {
   return (
     <button
       className="feedback-fab"
       onClick={onClick}
+      disabled={disabled}
       aria-label="Give Feedback"
     >
       <svg
